@@ -3,18 +3,13 @@
   <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-
     <title>NetAdmin | Network Dashboard</title>
-
-    <link
-      href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/css/bootstrap.min.css"
-      rel="stylesheet"
-    />
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/css/bootstrap.min.css" rel="stylesheet" />
     <link rel="stylesheet" href="css/style.css" />
   </head>
-
   <body>
     <div class="app-layout">
+      <!-- SIDEBAR -->
       <aside class="sidebar">
         <div class="brand">
           <div class="brand-icon">N</div>
@@ -25,23 +20,17 @@
         </div>
 
         <div class="menu-label">TỔNG QUAN</div>
-
         <a class="menu-item active" href="#dashboard">
           <span>▦</span> Dashboard
         </a>
 
         <div class="menu-label">QUẢN LÝ MẠNG</div>
-
-        <a class="menu-item" href="#devices"> <span>▤</span> Thiết bị mạng </a>
-
-        <a class="menu-item" href="#vlans"> <span>◫</span> Quản lý VLAN </a>
-
-        <a class="menu-item" href="#ports"> <span>⇄</span> Quản lý Port </a>
-
-        <a class="menu-item" href="#topology"> <span>⌘</span> Sơ đồ mạng </a>
+        <a class="menu-item" href="#devices"><span>▤</span> Thiết bị mạng</a>
+        <a class="menu-item" href="#vlans"><span>◫</span> Quản lý VLAN</a>
+        <a class="menu-item" href="#ports"><span>⇄</span> Quản lý Port</a>
+        <a class="menu-item" href="#topology"><span>⌘</span> Sơ đồ mạng</a>
 
         <div class="menu-label">HỆ THỐNG</div>
-
         <a class="menu-item" href="#logs">
           <span>☷</span> Nhật ký hoạt động
         </a>
@@ -55,13 +44,13 @@
         </div>
       </aside>
 
+      <!-- MAIN CONTENT -->
       <main class="main-content" id="dashboard">
         <header class="topbar">
           <div>
             <h4>Dashboard</h4>
             <p>Tổng quan hệ thống quản trị mạng</p>
           </div>
-
           <div class="user-info">
             <div class="avatar">AD</div>
             <div>
@@ -76,12 +65,12 @@
             <h2>Xin chào, Quản trị viên!</h2>
             <p>Theo dõi và quản lý hạ tầng mạng của bạn tại một nơi.</p>
           </div>
-
           <button class="btn btn-primary" id="refresh-btn">
             ↻ Làm mới dữ liệu
           </button>
         </section>
 
+        <!-- STATS GRID -->
         <section class="stats-grid">
           <article class="stat-card">
             <div class="stat-top">
@@ -120,6 +109,7 @@
           </article>
         </section>
 
+        <!-- CONTENT GRID -->
         <section class="content-grid">
           <article class="panel" id="devices">
             <div class="panel-header">
@@ -127,12 +117,10 @@
                 <h5>Thiết bị mạng</h5>
                 <p>Danh sách thiết bị được quản lý</p>
               </div>
-
               <button class="btn btn-outline-primary btn-sm" id="devices-btn">
                 Xem thiết bị
               </button>
             </div>
-
             <div class="empty-state">
               <div class="empty-icon">▤</div>
               <h6>Chưa có thiết bị</h6>
@@ -147,25 +135,19 @@
                 <p>Thông tin kết nối backend</p>
               </div>
             </div>
-
             <div class="system-info">
               <div class="info-row">
                 <span>Django Backend</span>
-                <span class="badge-status" id="django-status">
-                  Đang kiểm tra
-                </span>
+                <span class="badge-status" id="django-status">Đang kiểm tra</span>
               </div>
-
               <div class="info-row">
                 <span>REST API</span>
                 <strong id="rest-status">Đang kiểm tra</strong>
               </div>
-
               <div class="info-row">
                 <span>Netmiko</span>
                 <strong id="netmiko-status">Chưa kiểm tra</strong>
               </div>
-
               <div class="info-row">
                 <span>Cập nhật lần cuối</span>
                 <strong id="last-updated">--:--:--</strong>
@@ -174,16 +156,35 @@
           </article>
         </section>
 
+        <!-- QUẢN LÝ VLAN -->
         <section class="panel lower-panel" id="vlans">
-          <div class="panel-header">
+          <div class="panel-header d-flex justify-content-between align-items-center">
             <div>
-              <h5>Hoạt động gần đây</h5>
-              <p>Thông tin sẽ được lấy từ backend khi tích hợp nhật ký</p>
+              <h5>Quản lý VLAN</h5>
+              <p>Danh sách VLAN và cấu hình tự động qua Netmiko SSH</p>
             </div>
+            <button class="btn btn-primary btn-sm" data-bs-toggle="modal" data-bs-target="#createVlanModal">
+              + Tạo VLAN mới
+            </button>
           </div>
-
           <div class="activity-placeholder" id="activity-log">
-            Chưa có hoạt động nào được ghi nhận.
+            Chưa có hoạt động tạo VLAN nào được ghi nhận.
+          </div>
+        </section>
+
+        <!-- QUẢN LÝ PORT -->
+        <section class="panel lower-panel mt-4" id="ports">
+          <div class="panel-header d-flex justify-content-between align-items-center">
+            <div>
+              <h5>Quản lý Port (Interfaces)</h5>
+              <p>Gán Cổng Switch/Router vào các VLAN tương ứng</p>
+            </div>
+            <button class="btn btn-success btn-sm" data-bs-toggle="modal" data-bs-target="#assignPortModal">
+              ⇄ Gán Port vào VLAN
+            </button>
+          </div>
+          <div class="activity-placeholder" id="port-log">
+            Chưa có thao tác gán Port nào được ghi nhận.
           </div>
         </section>
 
@@ -194,6 +195,75 @@
       </main>
     </div>
 
+    <!-- MODAL FORM TẠO VLAN -->
+    <div class="modal fade" id="createVlanModal" tabindex="-1" aria-labelledby="vlanModalLabel" aria-hidden="true">
+      <div class="modal-dialog">
+        <div class="modal-content">
+          <div class="modal-header">
+            <h5 class="modal-title" id="vlanModalLabel">Tạo VLAN via SSH (Netmiko)</h5>
+            <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+          </div>
+          <form id="create-vlan-form">
+            <div class="modal-body">
+              <div class="mb-3">
+                <label class="form-label">Chọn thiết bị đích</label>
+                <select class="form-select" id="vlan-device-select" required>
+                  <option value="1">Ubuntu-SSH-Server (127.0.0.1)</option>
+                </select>
+              </div>
+              <div class="mb-3">
+                <label class="form-label">VLAN ID</label>
+                <input type="number" class="form-control" id="vlan-id-input" placeholder="VD: 10" min="1" max="4094" required />
+              </div>
+              <div class="mb-3">
+                <label class="form-label">Tên VLAN</label>
+                <input type="text" class="form-control" id="vlan-name-input" placeholder="VD: KeToan" required />
+              </div>
+            </div>
+            <div class="modal-footer">
+              <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Hủy</button>
+              <button type="submit" class="btn btn-primary" id="btn-submit-vlan">Gửi lệnh SSH tạo VLAN</button>
+            </div>
+          </form>
+        </div>
+      </div>
+    </div>
+
+    <!-- MODAL FORM GÁN PORT VÀO VLAN -->
+    <div class="modal fade" id="assignPortModal" tabindex="-1" aria-labelledby="portModalLabel" aria-hidden="true">
+      <div class="modal-dialog">
+        <div class="modal-content">
+          <div class="modal-header">
+            <h5 class="modal-title" id="portModalLabel">Gán Port vào VLAN</h5>
+            <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+          </div>
+          <form id="assign-port-form">
+            <div class="modal-body">
+              <div class="mb-3">
+                <label class="form-label">Chọn thiết bị đích</label>
+                <select class="form-select" id="port-device-select" required>
+                  <option value="1">Ubuntu-SSH-Server (127.0.0.1)</option>
+                </select>
+              </div>
+              <div class="mb-3">
+                <label class="form-label">Tên Port / Interface</label>
+                <input type="text" class="form-control" id="port-name-input" placeholder="VD: FastEthernet0/1 hoặc eth0" required />
+              </div>
+              <div class="mb-3">
+                <label class="form-label">Chọn VLAN ID</label>
+                <input type="number" class="form-control" id="port-vlan-id-input" placeholder="VD: 10" min="1" max="4094" required />
+              </div>
+            </div>
+            <div class="modal-footer">
+              <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Hủy</button>
+              <button type="submit" class="btn btn-success" id="btn-submit-port">Gửi lệnh SSH gán Port</button>
+            </div>
+          </form>
+        </div>
+      </div>
+    </div>
+
+    <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/js/bootstrap.bundle.min.js"></script>
     <script src="js/app.js"></script>
   </body>
 </html>
