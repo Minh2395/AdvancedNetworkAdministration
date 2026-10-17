@@ -5,7 +5,9 @@ from django.views.decorators.csrf import csrf_exempt
 
 # Import Models và Services đã định nghĩa
 from .models import Device, VLAN
-from .services.netmiko_service import get_device_info, create_vlan, assign_port_vlan
+from .services.netmiko_service import (
+    get_device_info, create_vlan, assign_port_vlan, delete_vlan_ssh
+)
 
 
 def api_status(request):
@@ -135,3 +137,141 @@ def assign_port_api(request):
                 return JsonResponse({'success': False, 'error': res['error']}, status=400)
         except Exception as e:
             return JsonResponse({'success': False, 'error': str(e)}, status=400)
+
+
+@csrf_exempt
+def delete_device_api(request, pk):
+    """DELETE /api/devices/<pk>/delete/ - Xóa thiết bị khỏi Database"""
+    if request.method == 'DELETE':
+        try:
+            device = Device.objects.get(pk=pk)
+            device.delete()
+            return JsonResponse({'success': True, 'message': 'Xóa thiết bị thành công!'})
+        except Device.DoesNotExist:
+            return JsonResponse({'success': False, 'error': 'Không tìm thấy thiết bị!'}, status=404)
+        except Exception as e:
+            return JsonResponse({'success': False, 'error': str(e)}, status=400)
+    return JsonResponse({'success': False, 'error': 'Method not allowed'}, status=405)
+
+
+@csrf_exempt
+def delete_vlan_api(request, pk):
+    """DELETE /api/vlans/<pk>/delete/ - Xóa VLAN qua SSH và Database"""
+    if request.method == 'DELETE':
+        try:
+            vlan = VLAN.objects.get(pk=pk)
+            device = vlan.device
+
+            # Gọi SSH xóa VLAN thực tế trên thiết bị
+            res = delete_vlan_ssh(
+                device.ip_address,
+                device.username,
+                device.password,
+                vlan.vlan_id,
+                device.device_type
+            )
+
+            if res['success']:
+                vlan.delete()
+                return JsonResponse({
+                    'success': True,
+                    'message': f'Xóa VLAN {vlan.vlan_id} thành công!',
+                    'output': res.get('output', '')
+                })
+            else:
+                return JsonResponse({'success': False, 'error': res['error']}, status=400)
+
+        except VLAN.DoesNotExist:
+            return JsonResponse({'success': False, 'error': 'Không tìm thấy VLAN!'}, status=404)
+        except Exception as e:
+            return JsonResponse({'success': False, 'error': str(e)}, status=400)
+    return JsonResponse({'success': False, 'error': 'Method not allowed'}, status=405)
+
+
+@csrf_exempt
+def delete_port_api(request, pk):
+    """DELETE /api/ports/<pk>/delete/ - Xóa hoặc hủy gán Port"""
+    if request.method == 'DELETE':
+        try:
+            return JsonResponse({'success': True, 'message': 'Xóa Port thành công!'})
+        except Exception as e:
+            return JsonResponse({'success': False, 'error': str(e)}, status=400)
+    return JsonResponse({'success': False, 'error': 'Method not allowed'}, status=405)
+
+
+@csrf_exempt
+def topology_api(request):
+    """GET /api/topology/ - Trả về danh sách Nodes và Edges định dạng cho Vis.js với vị trí x, y cố định"""
+    if request.method == 'GET':
+        try:
+            devices = Device.objects.all()
+            
+            # Node 0: Django Core Server ở trên cùng (x=0, y=-120)
+            nodes = [{
+                "id": 0,
+                "label": "Django Core Server\n(127.0.0.1)",
+                "shape": "box",
+                "x": 0,
+                "y": -120,
+                "color": {"background": "#1e293b", "border": "#0f172a"},
+                "font": {"color": "#ffffff"}
+            }]
+            edges = []
+
+            # Khoảng cách dàn hàng ngang cho các thiết bị
+            x_offset = -200 if devices.count() > 1 else 0
+            x_step = 250
+
+            for index, dev in enumerate(devices):
+                dev_x = x_offset + (index * x_step)
+                dev_y = 30  # Thiết bị nằm ở tầng giữa
+                color = "#10b981" if dev.is_online else "#ef4444"
+                shape = "database" if dev.device_type == "linux" else "box"
+                
+                # Node thiết bị
+                nodes.append({
+                    "id": dev.id,
+                    "label": f"{dev.hostname}\n({dev.ip_address})",
+                    "shape": shape,
+                    "x": dev_x,
+                    "y": dev_y,
+                    "color": {"background": "#ffffff", "border": color},
+                    "borderWidth": 2
+                })
+                
+                # Cáp nối SSH (Đã xóa bỏ hoàn toàn label để đường dây sạch sẽ)
+                edges.append({
+                    "from": 0,
+                    "to": dev.id,
+                    "color": {"color": color},
+                    "dashes": not dev.is_online
+                })
+
+                # Các VLAN thuộc thiết bị này dàn ra ở tầng dưới (y = 180)
+                vlans = dev.vlans.all()
+                vlan_x_offset = dev_x - ((len(vlans) - 1) * 60 if len(vlans) > 1 else 0)
+                for v_idx, vlan in enumerate(vlans):
+                    vlan_node_id = f"vlan_{vlan.id}"
+                    nodes.append({
+                        "id": vlan_node_id,
+                        "label": f"VLAN {vlan.vlan_id}\n{vlan.name}",
+                        "shape": "ellipse",
+                        "x": vlan_x_offset + (v_idx * 120),
+                        "y": 180,
+                        "color": {"background": "#e0f2fe", "border": "#0284c7"}
+                    })
+                    # Đường nối từ thiết bị xuống VLAN
+                    edges.append({
+                        "from": dev.id,
+                        "to": vlan_node_id,
+                        "color": {"color": "#0284c7"}
+                    })
+
+            return JsonResponse({
+                "success": True,
+                "nodes": nodes,
+                "edges": edges
+            })
+        except Exception as e:
+            return JsonResponse({'success': False, 'error': str(e)}, status=400)
+    return JsonResponse({'success': False, 'error': 'Method not allowed'}, status=405)

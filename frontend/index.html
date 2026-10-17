@@ -6,6 +6,8 @@
     <title>NetAdmin | Network Dashboard</title>
     <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/css/bootstrap.min.css" rel="stylesheet" />
     <link rel="stylesheet" href="css/style.css" />
+    <!-- Thư viện Vis.js Network để vẽ sơ đồ mạng trực quan -->
+    <script type="text/javascript" src="https://unpkg.com/vis-network/standalone/umd/vis-network.min.js"></script>
   </head>
   <body>
     <div class="app-layout">
@@ -112,13 +114,13 @@
         <!-- CONTENT GRID -->
         <section class="content-grid">
           <article class="panel" id="devices">
-            <div class="panel-header">
+            <div class="panel-header d-flex justify-content-between align-items-center">
               <div>
                 <h5>Thiết bị mạng</h5>
                 <p>Danh sách thiết bị được quản lý</p>
               </div>
-              <button class="btn btn-outline-primary btn-sm" id="devices-btn">
-                Xem thiết bị
+              <button class="btn btn-primary btn-sm" data-bs-toggle="modal" data-bs-target="#addDeviceModal">
+                + Thêm thiết bị
               </button>
             </div>
             <div class="empty-state">
@@ -157,7 +159,7 @@
         </section>
 
         <!-- QUẢN LÝ VLAN -->
-        <section class="panel lower-panel" id="vlans">
+        <section class="panel lower-panel mt-4" id="vlans">
           <div class="panel-header d-flex justify-content-between align-items-center">
             <div>
               <h5>Quản lý VLAN</h5>
@@ -188,11 +190,71 @@
           </div>
         </section>
 
+        <!-- SƠ ĐỒ MẠNG (TOPOLOGY MAP) -->
+        <section class="panel lower-panel mt-4" id="topology">
+          <div class="panel-header d-flex justify-content-between align-items-center">
+            <div>
+              <h5>Sơ đồ mạng (Network Topology Map)</h5>
+              <p>Mô phỏng đồ họa trực quan hạ tầng kết nối các thiết bị mạng</p>
+            </div>
+            <button class="btn btn-primary btn-sm" onclick="loadTopology()">
+              ↻ Tải lại sơ đồ
+            </button>
+          </div>
+          <div id="network-map" style="height: 380px; background: #ffffff; border: 1px solid #e0e0e0; border-radius: 8px;">
+            <p class="text-muted text-center py-5">Đang tải sơ đồ mạng...</p>
+          </div>
+        </section>
+
         <footer class="footer">
           <span>NetAdmin · Network Management Dashboard</span>
           <span>Academic Project</span>
         </footer>
       </main>
+    </div>
+
+    <!-- MODAL FORM THÊM THIẾT BỊ MỚI -->
+    <div class="modal fade" id="addDeviceModal" tabindex="-1" aria-labelledby="addDeviceModalLabel" aria-hidden="true">
+      <div class="modal-dialog">
+        <div class="modal-content">
+          <div class="modal-header">
+            <h5 class="modal-title" id="addDeviceModalLabel">Thêm thiết bị mạng mới</h5>
+            <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+          </div>
+          <form id="add-device-form">
+            <div class="modal-body">
+              <div class="mb-3">
+                <label class="form-label">Hostname</label>
+                <input type="text" class="form-control" id="device-hostname-input" placeholder="VD: Core-Switch-01" required />
+              </div>
+              <div class="mb-3">
+                <label class="form-label">IP Address</label>
+                <input type="text" class="form-control" id="device-ip-input" placeholder="VD: 192.168.1.1" required />
+              </div>
+              <div class="mb-3">
+                <label class="form-label">SSH Username</label>
+                <input type="text" class="form-control" id="device-username-input" placeholder="VD: admin" required />
+              </div>
+              <div class="mb-3">
+                <label class="form-label">SSH Password</label>
+                <input type="password" class="form-control" id="device-password-input" placeholder="Mật khẩu thiết bị" required />
+              </div>
+              <div class="mb-3">
+                <label class="form-label">Loại thiết bị (Device Type)</label>
+                <select class="form-select" id="device-type-input" required>
+                  <option value="cisco_ios">Cisco IOS</option>
+                  <option value="linux">Linux Server</option>
+                  <option value="juniper_junos">Juniper Junos</option>
+                </select>
+              </div>
+            </div>
+            <div class="modal-footer">
+              <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Hủy</button>
+              <button type="submit" class="btn btn-primary" id="btn-submit-device">Lưu và kiểm tra SSH</button>
+            </div>
+          </form>
+        </div>
+      </div>
     </div>
 
     <!-- MODAL FORM TẠO VLAN -->
@@ -208,7 +270,7 @@
               <div class="mb-3">
                 <label class="form-label">Chọn thiết bị đích</label>
                 <select class="form-select" id="vlan-device-select" required>
-                  <option value="1">Ubuntu-SSH-Server (127.0.0.1)</option>
+                  <option value="">Đang tải thiết bị...</option>
                 </select>
               </div>
               <div class="mb-3">
@@ -242,7 +304,7 @@
               <div class="mb-3">
                 <label class="form-label">Chọn thiết bị đích</label>
                 <select class="form-select" id="port-device-select" required>
-                  <option value="1">Ubuntu-SSH-Server (127.0.0.1)</option>
+                  <option value="">Đang tải thiết bị...</option>
                 </select>
               </div>
               <div class="mb-3">

@@ -10,28 +10,25 @@ const elements = {
   lastUpdated: document.getElementById("last-updated"),
   refreshButton: document.getElementById("refresh-btn"),
   
-  // Các thẻ hiển thị số liệu
   totalDevices: document.getElementById("total-devices"),
   onlineDevices: document.getElementById("online-devices"),
   totalVlans: document.getElementById("total-vlans"),
   devicesPanel: document.getElementById("devices"),
   vlansPanel: document.getElementById("vlans"),
   
-  // Modal & Form Tạo VLAN
   vlanForm: document.getElementById("create-vlan-form"),
   vlanDeviceSelect: document.getElementById("vlan-device-select"),
   btnSubmitVlan: document.getElementById("btn-submit-vlan"),
   
-  // Modal & Form Gán Port
   portForm: document.getElementById("assign-port-form"),
   portDeviceSelect: document.getElementById("port-device-select"),
   btnSubmitPort: document.getElementById("btn-submit-port"),
 };
 
-// Đọc danh sách Port đã gán từ localStorage (nếu có) để không bị mất khi Refresh trang
 let portAssignments = JSON.parse(localStorage.getItem("portAssignments")) || [];
+let networkInstance = null;
+let isInitialTopologyLoaded = false;
 
-// 1. Kiểm tra trạng thái Backend
 async function checkBackend() {
   elements.apiStatus.textContent = "...";
   elements.apiMessage.textContent = "Đang kết nối máy chủ";
@@ -73,7 +70,6 @@ async function checkBackend() {
   }
 }
 
-// 2. Lấy số liệu thống kê (Thẻ Tổng thiết bị, Trực tuyến, VLAN)
 async function fetchStats() {
   try {
     const response = await fetch(`${API_BASE_URL}/api/stats/`, {
@@ -90,7 +86,6 @@ async function fetchStats() {
   }
 }
 
-// 3. Lấy danh sách thiết bị
 async function fetchDevices() {
   if (!elements.devicesPanel) return;
 
@@ -118,6 +113,7 @@ async function fetchDevices() {
                 <th>IP Address</th>
                 <th>Loại thiết bị</th>
                 <th>Trạng thái</th>
+                <th class="text-end">Thao tác</th>
               </tr>
             </thead>
             <tbody>
@@ -134,6 +130,9 @@ async function fetchDevices() {
             <td><code>${dev.ip_address}</code></td>
             <td>${dev.device_type}</td>
             <td>${badge}</td>
+            <td class="text-end">
+              <button class="btn btn-outline-danger btn-sm" onclick="deleteDevice(${dev.id})">Xóa</button>
+            </td>
           </tr>
         `;
       });
@@ -157,7 +156,6 @@ async function fetchDevices() {
   }
 }
 
-// Cập nhật danh sách Option trong các Modal Chọn Thiết bị
 function updateDeviceSelectOptions(devices) {
   let optionsHtml = "";
   if (devices.length === 0) {
@@ -176,7 +174,6 @@ function updateDeviceSelectOptions(devices) {
   }
 }
 
-// Hiển thị danh sách Port đã gán lên giao diện
 function renderPortTable() {
   const portLogContainer = document.getElementById("port-log");
   if (!portLogContainer) return;
@@ -200,18 +197,22 @@ function renderPortTable() {
             <th>VLAN ID</th>
             <th>Thiết bị</th>
             <th>Thời gian thực hiện</th>
+            <th class="text-end">Thao tác</th>
           </tr>
         </thead>
         <tbody>
   `;
 
-  portAssignments.forEach((item) => {
+  portAssignments.forEach((item, index) => {
     tableHtml += `
       <tr>
         <td><code>${item.portName}</code></td>
         <td><span class="badge bg-success">VLAN ${item.vlanId}</span></td>
         <td>${item.deviceName}</td>
         <td><small class="text-muted">${item.timestamp}</small></td>
+        <td class="text-end">
+          <button class="btn btn-outline-danger btn-sm" onclick="deletePort(${index})">Xóa</button>
+        </td>
       </tr>
     `;
   });
@@ -227,7 +228,6 @@ function renderPortTable() {
   document.getElementById("ports")?.insertAdjacentHTML("beforeend", tableHtml);
 }
 
-// 4. Lấy danh sách VLAN và hiển thị trên giao diện
 async function fetchVlans() {
   if (!elements.vlansPanel) return;
 
@@ -252,6 +252,7 @@ async function fetchVlans() {
                 <th>VLAN ID</th>
                 <th>Tên VLAN</th>
                 <th>Thiết bị sở hữu</th>
+                <th class="text-end">Thao tác</th>
               </tr>
             </thead>
             <tbody>
@@ -263,6 +264,9 @@ async function fetchVlans() {
             <td><span class="badge bg-primary">VLAN ${v.vlan_id}</span></td>
             <td><strong>${v.name}</strong></td>
             <td>${v.device__hostname} (<code>${v.device__ip_address}</code>)</td>
+            <td class="text-end">
+              <button class="btn btn-outline-danger btn-sm" onclick="deleteVlan(${v.id})">Xóa</button>
+            </td>
           </tr>
         `;
       });
@@ -286,7 +290,63 @@ async function fetchVlans() {
   }
 }
 
-// 5. Xử lý gửi lệnh Tạo VLAN via SSH
+// Xử lý gửi form Thêm thiết bị mạng mới
+const addDeviceForm = document.getElementById("add-device-form");
+if (addDeviceForm) {
+  addDeviceForm.addEventListener("submit", async (e) => {
+    e.preventDefault();
+
+    const hostname = document.getElementById("device-hostname-input").value;
+    const ipAddress = document.getElementById("device-ip-input").value;
+    const username = document.getElementById("device-username-input").value;
+    const password = document.getElementById("device-password-input").value;
+    const deviceType = document.getElementById("device-type-input").value;
+
+    const btnSubmit = document.getElementById("btn-submit-device");
+    btnSubmit.disabled = true;
+    btnSubmit.innerText = "Đang kiểm tra kết nối SSH...";
+
+    try {
+      const response = await fetch(`${API_BASE_URL}/api/devices/`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          hostname: hostname,
+          ip_address: ipAddress,
+          username: username,
+          password: password,
+          device_type: deviceType,
+        }),
+      });
+
+      const data = await response.json();
+
+      if (response.ok && data.success) {
+        alert(`Thành công: ${data.message} (Trạng thái SSH: ${data.is_online ? 'Online' : 'Offline'})`);
+        addDeviceForm.reset();
+
+        const modalEl = document.getElementById("addDeviceModal");
+        if (modalEl && typeof bootstrap !== "undefined") {
+          const modal = bootstrap.Modal.getInstance(modalEl);
+          if (modal) modal.hide();
+        }
+
+        isInitialTopologyLoaded = false;
+        localStorage.removeItem("nodePositions");
+        refreshAllData();
+      } else {
+        alert(`Lỗi: ${data.error || "Không thể thêm thiết bị"}`);
+      }
+    } catch (error) {
+      console.error("Lỗi thêm thiết bị:", error);
+      alert("Không thể kết nối đến máy chủ Backend!");
+    } finally {
+      btnSubmit.disabled = false;
+      btnSubmit.innerText = "Lưu và kiểm tra SSH";
+    }
+  });
+}
+
 if (elements.vlanForm) {
   elements.vlanForm.addEventListener("submit", async (e) => {
     e.preventDefault();
@@ -326,6 +386,7 @@ if (elements.vlanForm) {
           if (modal) modal.hide();
         }
 
+        isInitialTopologyLoaded = false;
         refreshAllData();
       } else {
         alert(`Lỗi: ${data.error || "Không thể đẩy lệnh SSH tạo VLAN"}`);
@@ -340,7 +401,6 @@ if (elements.vlanForm) {
   });
 }
 
-// 6. Xử lý gửi lệnh Gán Port vào VLAN via SSH
 if (elements.portForm) {
   elements.portForm.addEventListener("submit", async (e) => {
     e.preventDefault();
@@ -373,7 +433,6 @@ if (elements.portForm) {
       if (response.ok && data.success) {
         alert(`Thành công: ${data.message || "Đã gán Port vào VLAN thành công!"}`);
 
-        // Ghi nhận thông tin vừa gán vào mảng
         const deviceText = elements.portDeviceSelect.options[elements.portDeviceSelect.selectedIndex]?.text || "Device";
         portAssignments.unshift({
           portName: portName,
@@ -382,12 +441,8 @@ if (elements.portForm) {
           timestamp: new Date().toLocaleTimeString("vi-VN"),
         });
 
-        // Lưu danh sách vào localStorage
         localStorage.setItem("portAssignments", JSON.stringify(portAssignments));
-
-        // Cập nhật lại bảng trên màn hình
         renderPortTable();
-
         elements.portForm.reset();
 
         const modalEl = document.getElementById("assignPortModal");
@@ -410,21 +465,156 @@ if (elements.portForm) {
   });
 }
 
-// Hàm tổng hợp gọi toàn bộ API
+// 7. Tải và vẽ sơ đồ mạng dạng Canvas
+async function loadTopology() {
+  const container = document.getElementById("network-map");
+  if (!container) return;
+
+  if (networkInstance !== null && isInitialTopologyLoaded) {
+    return;
+  }
+
+  container.innerHTML = `<p class="text-muted text-center py-5">Đang kết nối tải sơ đồ mạng...</p>`;
+
+  try {
+    const response = await fetch(`${API_BASE_URL}/api/topology/`, {
+      signal: AbortSignal.timeout(8000),
+    });
+    if (!response.ok) throw new Error("Không thể kết nối API sơ đồ mạng");
+
+    const data = await response.json();
+    if (!data.success) throw new Error(data.error || "Lỗi dữ liệu topology");
+
+    const savedPositions = JSON.parse(localStorage.getItem("nodePositions")) || {};
+    const processedNodes = data.nodes.map(node => {
+      if (savedPositions[node.id]) {
+        return { ...node, x: savedPositions[node.id].x, y: savedPositions[node.id].y };
+      }
+      return node;
+    });
+
+    const graphData = {
+      nodes: new vis.DataSet(processedNodes),
+      edges: new vis.DataSet(data.edges)
+    };
+
+    const options = {
+      nodes: {
+        font: { size: 14, face: "sans-serif", color: "#1e293b" },
+        margin: 14,
+        shadow: true,
+        shape: "box",
+        borderRadius: 6
+      },
+      edges: {
+        width: 2,
+        color: { color: "#64748b" },
+        smooth: { type: "cubicBezier", roundness: 0.2 }
+      },
+      physics: false,
+      interaction: { 
+        hover: true, 
+        dragNodes: true, 
+        dragView: true,  
+        zoomView: true 
+      }
+    };
+
+    if (networkInstance !== null) {
+      networkInstance.destroy();
+    }
+    
+    networkInstance = new vis.Network(container, graphData, options);
+    isInitialTopologyLoaded = true;
+
+    networkInstance.fit();
+
+    networkInstance.on("dragEnd", function (params) {
+      if (params.nodes.length > 0) {
+        const positions = networkInstance.getPositions(params.nodes);
+        let currentSaved = JSON.parse(localStorage.getItem("nodePositions")) || {};
+        params.nodes.forEach(nodeId => {
+          if (positions[nodeId]) {
+            currentSaved[nodeId] = { x: positions[nodeId].x, y: positions[nodeId].y };
+          }
+        });
+        localStorage.setItem("nodePositions", JSON.stringify(currentSaved));
+      }
+    });
+
+  } catch (error) {
+    console.error("Lỗi vẽ sơ đồ mạng:", error);
+    container.innerHTML = `<p class="text-danger text-center py-5">Không thể tải dữ liệu sơ đồ mạng từ Backend.</p>`;
+  }
+}
+
+async function deleteDevice(deviceId) {
+  if (!confirm("Bạn có chắc chắn muốn xóa thiết bị này không?")) return;
+  try {
+    const response = await fetch(`${API_BASE_URL}/api/devices/${deviceId}/delete/`, {
+      method: "DELETE",
+    });
+    const data = await response.json();
+    if (response.ok && data.success) {
+      alert("Đã xóa thiết bị thành công!");
+      isInitialTopologyLoaded = false;
+      localStorage.removeItem("nodePositions");
+      refreshAllData();
+    } else {
+      alert(`Lỗi: ${data.error || "Không thể xóa thiết bị"}`);
+    }
+  } catch (error) {
+    console.error("Lỗi khi xóa thiết bị:", error);
+    alert("Không thể kết nối đến máy chủ Backend!");
+  }
+}
+
+async function deleteVlan(vlanPk) {
+  if (!confirm("Bạn có chắc chắn muốn xóa VLAN này (sẽ chạy lệnh 'no vlan' qua SSH)?")) return;
+  try {
+    const response = await fetch(`${API_BASE_URL}/api/vlans/${vlanPk}/delete/`, {
+      method: "DELETE",
+    });
+    const data = await response.json();
+    if (response.ok && data.success) {
+      alert(`Thành công: ${data.message}`);
+      isInitialTopologyLoaded = false;
+      localStorage.removeItem("nodePositions");
+      refreshAllData();
+    } else {
+      alert(`Lỗi: ${data.error || "Không thể xóa VLAN"}`);
+    }
+  } catch (error) {
+    console.error("Lỗi khi xóa VLAN:", error);
+    alert("Không thể kết nối đến máy chủ Backend!");
+  }
+}
+
+async function deletePort(index) {
+  if (!confirm("Bạn có chắc chắn muốn xóa bản ghi gán Port này không?")) return;
+  portAssignments.splice(index, 1);
+  localStorage.setItem("portAssignments", JSON.stringify(portAssignments));
+  renderPortTable();
+  alert("Đã xóa bản ghi Port thành công!");
+}
+
 async function refreshAllData() {
   elements.refreshButton.disabled = true;
   await Promise.all([
     checkBackend(),
     fetchStats(),
     fetchDevices(),
-    fetchVlans()
+    fetchVlans(),
+    loadTopology()
   ]);
   renderPortTable();
   elements.refreshButton.disabled = false;
 }
 
-// Lắng nghe sự kiện click nút Refresh
-elements.refreshButton.addEventListener("click", refreshAllData);
+elements.refreshButton.addEventListener("click", () => {
+  isInitialTopologyLoaded = false;
+  localStorage.removeItem("nodePositions");
+  refreshAllData();
+});
 
-// Tải dữ liệu ban đầu khi load trang
 refreshAllData();
