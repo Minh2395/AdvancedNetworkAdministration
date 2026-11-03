@@ -131,7 +131,10 @@ async function fetchDevices() {
             <td>${dev.device_type}</td>
             <td>${badge}</td>
             <td class="text-end">
-              <button class="btn btn-outline-danger btn-sm" onclick="deleteDevice(${dev.id})">Xóa</button>
+              <div class="btn-group btn-group-sm" role="group">
+                <button class="btn ${dev.is_online ? "btn-outline-secondary" : "btn-outline-success"}" onclick="toggleDevice(${dev.id})" title="Đổi Online/Offline thủ công (mô phỏng, không SSH)">${dev.is_online ? "Tắt" : "Bật"}</button>
+                <button class="btn btn-outline-danger" onclick="deleteDevice(${dev.id})">Xóa</button>
+              </div>
             </td>
           </tr>
         `;
@@ -545,6 +548,25 @@ async function loadTopology() {
   } catch (error) {
     console.error("Lỗi vẽ sơ đồ mạng:", error);
     container.innerHTML = `<p class="text-danger text-center py-5">Không thể tải dữ liệu sơ đồ mạng từ Backend.</p>`;
+  }
+}
+
+async function toggleDevice(deviceId) {
+  try {
+    const response = await fetch(`${API_BASE_URL}/api/devices/${deviceId}/toggle/`, {
+      method: "POST",
+    });
+    const data = await response.json();
+    if (response.ok && data.success) {
+      // Giữ nguyên vị trí node trên sơ đồ, chỉ vẽ lại màu
+      isInitialTopologyLoaded = false;
+      refreshAllData();
+    } else {
+      alert(`Lỗi: ${data.error || "Không thể đổi trạng thái thiết bị"}`);
+    }
+  } catch (error) {
+    console.error("Lỗi đổi trạng thái thiết bị:", error);
+    alert("Không thể kết nối đến máy chủ Backend!");
   }
 }
 
