@@ -275,3 +275,59 @@ def topology_api(request):
         except Exception as e:
             return JsonResponse({'success': False, 'error': str(e)}, status=400)
     return JsonResponse({'success': False, 'error': 'Method not allowed'}, status=405)
+
+@csrf_exempt
+def toggle_device_api(request, pk):
+    """POST /api/devices/<pk>/toggle/ - Đổi trạng thái Online/Offline thủ công (mô phỏng, không SSH)"""
+    if request.method == 'POST':
+        try:
+            device = Device.objects.get(pk=pk)
+
+            # Mặc định: đảo trạng thái hiện tại.
+            # Nếu client gửi {"is_online": true/false} thì đặt đúng giá trị đó.
+            new_state = not device.is_online
+            try:
+                data = json.loads(request.body) if request.body else {}
+            except ValueError:
+                data = {}  # thân yêu cầu rỗng hoặc không phải JSON -> chỉ đảo trạng thái
+            if isinstance(data, dict) and isinstance(data.get('is_online'), bool):
+                new_state = data['is_online']
+
+            device.is_online = new_state
+            device.save(update_fields=['is_online'])
+            return JsonResponse({
+                'success': True,
+                'message': f"Đã chuyển {device.hostname} sang {'Online' if new_state else 'Offline'} (thủ công)",
+                'id': device.id,
+                'is_online': device.is_online
+            })
+        except Device.DoesNotExist:
+            return JsonResponse({'success': False, 'error': 'Không tìm thấy thiết bị!'}, status=404)
+        except Exception as e:
+            return JsonResponse({'success': False, 'error': str(e)}, status=400)
+    return JsonResponse({'success': False, 'error': 'Method not allowed'}, status=405)
+
+
+@csrf_exempt
+def check_device_api(request, pk):
+    """POST /api/devices/<pk>/check/ - Kiểm tra lại kết nối SSH thật và cập nhật trạng thái"""
+    if request.method == 'POST':
+        try:
+            device = Device.objects.get(pk=pk)
+            info = get_device_info(
+                device.ip_address, device.username, device.password, device.device_type
+            )
+            device.is_online = (info['status'] == 'Online')
+            device.save(update_fields=['is_online'])
+            return JsonResponse({
+                'success': True,
+                'message': f"Kiểm tra SSH: {info['status']}",
+                'id': device.id,
+                'is_online': device.is_online,
+                'status': info['status']
+            })
+        except Device.DoesNotExist:
+            return JsonResponse({'success': False, 'error': 'Không tìm thấy thiết bị!'}, status=404)
+        except Exception as e:
+            return JsonResponse({'success': False, 'error': str(e)}, status=400)
+    return JsonResponse({'success': False, 'error': 'Method not allowed'}, status=405)
